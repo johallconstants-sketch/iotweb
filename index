@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SENSORHUB / 01 — Live Environmental Monitor</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg:        #0c0c0d;
+  --bg-2:      #131315;
+  --surface:   #18181b;
+  --border:    #2a2a2e;
+  --border-2:  #3a3a40;
+  --ink:       #ece8de;
+  --ink-mute:  #7a7770;
+  --ink-dim:   #4a4844;
+  --orange:    #ff6b35;
+  --orange-2:  #ffb380;
+  --teal:      #4dd0c8;
+  --lime:      #b6d435;
+  --yellow:    #f5c842;
+  --red:       #e8473d;
+  --grid:      rgba(255,255,255,0.025);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Syne', sans-serif;
+  font-weight: 500;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    radial-gradient(ellipse at top, rgba(255,107,53,0.04), transparent 50%);
+  background-size: 48px 48px, 48px 48px, 100% 100%;
+}
+
+/* === TYPOGRAPHY === */
+.display {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.02em;
+  line-height: 0.85;
+}
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+}
+
+/* === LAYOUT === */
+.shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 40px 80px;
+}
+
+@media (max-width: 720px) {
+  .shell { padding: 20px 18px 60px; }
+}
+
+/* === TOP BAR === */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 18px;
+  margin-bottom: 56px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+.topbar .left { display: flex; gap: 28px; align-items: center; }
+.topbar .right { display: flex; gap: 28px; align-items: center; }
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.brand-mark::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: var(--orange);
+  display: inline-block;
+  transform: rotate(45deg);
+  box-shadow: 0 0 12px var(--orange);
+}
+
+/* === HERO === */
+.hero {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 40px;
+  margin-bottom: 80px;
+  align-items: end;
+}
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; gap: 32px; }
+}
+
+.hero-title {
+  font-size: clamp(72px, 14vw, 220px);
+  color: var(--ink);
+}
+.hero-title .accent {
+  color: var(--orange);
+  font-style: italic;
+}
+.hero-title .stroke {
+  -webkit-text-stroke: 1.5px var(--ink);
+  color: transparent;
+}
+
+.hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 12px;
+}
+.hero-tagline {
+  font-family: 'Syne', sans-serif;
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--ink);
+  max-width: 380px;
+}
+.hero-tagline span { color: var(--orange); }
+
+.tech-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.tech-row span {
+  border: 1px solid var(--border-2);
+  padding: 5px 9px;
+  border-radius: 2px;
+}
+
+/* === LIVE STATUS PILL === */
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.live-pill .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 10px var(--lime);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.live-pill.stale .dot { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
+.live-pill.dead .dot  { background: var(--red);  box-shadow: 0 0 10px var(--red);  }
+@keyframes pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%     { opacity: 0.4; transform: scale(1.3); }
+}
+
+/* === SECTION HEADER === */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  margin-bottom: 28px;
+}
+.section-head .title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 38px;
+  letter-spacing: 0.04em;
+}
+.section-head .title .num {
+  color: var(--orange);
+  margin-right: 14px;
+}
+.section-head .meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+/* === STAT GRID === */
+.stats {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 14px;
+  margin-bottom: 80px;
+}
+@media (max-width: 900px) {
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stats .feature { grid-column: span 2; }
+}
+@media (max-width: 540px) {
+  .stats { grid-template-columns: 1fr; }
+  .stats .feature { grid-column: span 1; }
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 22px 22px 20px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 140px;
+}
+.stat::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 28px; height: 1px;
+  background: var(--orange);
+}
+.stat .label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.stat .label-row .id { color: var(--ink-dim); }
+.stat .value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 76px;
+  line-height: 0.9;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.stat .value .unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-mute);
+  text-transform: lowercase;
+}
+.stat .footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-mute);
+  margin-top: auto;
+}
+.spark { width: 100%; height: 28px; }
+
+/* Feature card (PM2.5) */
+.stat.feature {
+  grid-row: span 2;
+  background: linear-gradient(180deg, var(--surface), var(--bg-2));
+  padding: 28px;
+}
+.stat.feature::before {
+  width: 100%;
+  height: 2px;
+  background: var(--orange);
+  box-shadow: 0 0 18px var(--orange);
+}
+.stat.feature .value {
+  font-size: clamp(120px, 14vw, 200px);
+  margin-top: 12px;
+}
+.stat.feature .aqi-bar {
+  margin-top: 16px;
+  height: 6px;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+.stat.feature .aqi-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    var(--lime) 0%, var(--lime) 12%,
+    var(--yellow) 12%, var(--yellow) 30%,
+    var(--orange) 30%, var(--orange) 50%,
+    var(--red) 50%, var(--red) 80%,
+    #b91c1c 80%, #b91c1c 100%);
+  opacity: 0.55;
+}
+.stat.feature .aqi-cursor {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: var(--ink);
+  transition: left 600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.stat.feature .aqi-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-top: 8px;
+}
+
+/* status colors for value */
+.s-good   { color: var(--lime) !important; }
+.s-mod    { color: var(--yellow) !important; }
+.s-poor   { color: var(--orange) !important; }
+.s-bad    { color: var(--red) !important; }
+
+/* === CHART SECTION === */
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 80px;
+}
+@media (max-width: 900px) {
+  .charts { grid-template-columns: 1fr; }
+}
+
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 22px;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+.chart-card.wide { grid-column: span 2; }
+@media (max-width: 900px) {
+  .chart-card.wide { grid-column: span 1; }
+}
+.chart-card .head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.chart-card .ttl {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+}
+.chart-card .ttl .accent { color: var(--orange); margin-right: 8px; }
+.chart-card .legend {
+  display: flex;
+  gap: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.chart-card .legend .item { display: flex; align-items: center; gap: 6px; }
+.chart-card .legend .swatch { width: 10px; height: 10px; border-radius: 50%; }
+.chart-card .canvas-wrap {
+  flex: 1;
+  position: relative;
+  min-height: 220px;
+}
+
+/* === FOOTER === */
+.footer {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer .ascii {
+  font-family: 'JetBrains Mono', monospace;
+  white-space: pre;
+  color: var(--ink-dim);
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+/* === LOADING === */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface), var(--bg-2), var(--surface));
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* === ENTRANCE ANIMATION === */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.reveal:nth-child(1) { animation-delay: 0.05s; }
+.reveal:nth-child(2) { animation-delay: 0.15s; }
+.reveal:nth-child(3) { animation-delay: 0.25s; }
+.reveal:nth-child(4) { animation-delay: 0.35s; }
+.reveal:nth-child(5) { animation-delay: 0.45s; }
+.reveal:nth-child(6) { animation-delay: 0.55s; }
+@keyframes rise {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.error-banner {
+  background: rgba(232, 71, 61, 0.1);
+  border: 1px solid rgba(232, 71, 61, 0.4);
+  color: var(--orange-2);
+  padding: 12px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  margin-bottom: 24px;
+  display: none;
+}
+.error-banner.on { display: block; }
+</style>
+</head>
+
+<body>
+
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="left">
+      <div class="brand-mark">SENSORHUB / 01</div>
+      <div class="hide-sm">ESP32 · BME280 · INMP441 · GP2Y10</div>
+    </div>
+    <div class="right">
+      <div id="clock">— —:— —</div>
+      <div class="live-pill" id="livePill">
+        <span class="dot"></span>
+        <span id="liveLabel">CONNECTING…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1 class="hero-title display">
+      <span class="stroke">AMBIENT</span><br>
+      <span class="accent">TELEMETRY.</span>
+    </h1>
+    <div class="hero-meta">
+      <div class="hero-tagline">
+        Six channels of environmental signal — captured at the edge by an ESP32, 
+        forwarded through Apps Script, persisted in Supabase. <span>Updates every 30 minutes.</span>
+      </div>
+      <div class="tech-row">
+        <span>PM2.5</span><span>TEMP</span><span>HUMIDITY</span>
+        <span>PRESSURE</span><span>SOUND</span><span>OCCUPANCY</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="error-banner" id="errBanner"></div>
+
+  <!-- CURRENT READINGS -->
+  <div class="section-head">
+    <div class="title"><span class="num">01</span>CURRENT READING</div>
+    <div class="meta" id="lastSeen">— last sample: synchronizing —</div>
+  </div>
+
+  <div class="stats" id="stats">
+    <!-- Feature: PM2.5 -->
+    <div class="stat feature reveal">
+      <div class="label-row">
+        <span>PM2.5 — PARTICULATE MATTER</span>
+        <span class="id">/ CH·1</span>
+      </div>
+      <div class="value mono" id="vPm">
+        <span id="vPmNum">— —</span>
+        <span class="unit">µg/m³</span>
+      </div>
+      <div>
+        <div class="aqi-bar"><div class="aqi-cursor" id="aqiCursor" style="left:0%"></div></div>
+        <div class="aqi-labels"><span>0</span><span>12</span><span>35</span><span>55</span><span>150+</span></div>
+      </div>
+      <div class="footer">
+        <span id="pmStatus">— UNCATEGORIZED —</span>
+        <span id="pmDelta">Δ —</span>
+      </div>
+    </div>
+
+    <!-- Temp -->
+    <div class="stat reveal">
+      <div class="label-row"><span>TEMPERATURE</span><span class="id">/ CH·2</span></div>
+      <div class="value mono"><span id="vTemp">—</span><span class="unit">°C</span></div>
+      <canvas class="spark" id="sparkTemp"></canvas>
+      <div class="footer"><span>BME280</span><span id="dTemp">Δ —</span></div>
+    </div>
+
+    <!-- Humidity -->
+    <div class="stat reveal">
+      <div class="label-row"><span>HUMIDITY</span><span class="id">/ CH·3</span></div>
+      <div class="value mono"><span id="vHumi">—</span><span class="unit">%</span></div>
+      <canvas class="spark" id="sparkHumi"></canvas>
+      <div class="footer"><span>BME280</span><span id="dHumi">Δ —</span></div>
+    </div>
+
+    <!-- Sound -->
+    <div class="stat reveal">
+      <div class="label-row"><span>ACOUSTIC LEVEL</span><span class="id">/ CH·4</span></div>
+      <div class="value mono"><span id="vSnd">—</span><span class="unit">amp</span></div>
+      <canvas class="spark" id="sparkSnd"></canvas>
+      <div class="footer"><span>INMP441</span><span id="dSnd">Δ —</span></div>
+    </div>
+
+    <!-- People count -->
+    <div class="stat reveal">
+      <div class="label-row"><span>OCCUPANCY</span><span class="id">/ CH·5</span></div>
+      <div class="value mono"><span id="vIr">—</span><span class="unit">count</span></div>
+      <canvas class="spark" id="sparkIr"></canvas>
+      <div class="footer"><span>E18-D80NK</span><span id="dIr">Δ —</span></div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="section-head">
+    <div class="title"><span class="num">02</span>HISTORICAL TRACE</div>
+    <div class="meta" id="rangeMeta">— LAST 200 SAMPLES —</div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card wide reveal">
+      <div class="head">
+        <div class="ttl"><span class="accent">▸</span>PM2.5 PARTICULATE</div>
+        <div class="legend">
+          <div class="item"><span class="swatch" style="background:#ff6b35"></span>µg/m³</div>
+        </div>
+      </div>
+      <div class="canvas-wrap"><canvas id="chartPm"></canvas></div>
+    </div>
+
+    <div class="chart-card reveal">
+      <div class="head">
+        <div class="ttl"><span class="accent">▸</span>CLIMATE</div>
+        <div class="legend">
+          <div class="item"><span class="swatch" style="background:#ff6b35"></span>TEMP °C</div>
+          <div class="item"><span class="swatch" style="background:#4dd0c8"></span>HUMI %</div>
+        </div>
+      </div>
+      <div class="canvas-wrap"><canvas id="chartClimate"></canvas></div>
+    </div>
+
+    <div class="chart-card reveal">
+      <div class="head">
+        <div class="ttl"><span class="accent">▸</span>ACOUSTIC</div>
+        <div class="legend">
+          <div class="item"><span class="swatch" style="background:#b6d435"></span>AMPLITUDE</div>
+        </div>
+      </div>
+      <div class="canvas-wrap"><canvas id="chartSnd"></canvas></div>
+    </div>
+
+    <div class="chart-card wide reveal">
+      <div class="head">
+        <div class="ttl"><span class="accent">▸</span>OCCUPANCY EVENTS</div>
+        <div class="legend">
+          <div class="item"><span class="swatch" style="background:#f5c842"></span>CUMULATIVE COUNT</div>
+        </div>
+      </div>
+      <div class="canvas-wrap"><canvas id="chartIr"></canvas></div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div>
+      <strong style="color:var(--ink)">SENSORHUB</strong> · ESP32 → APPS SCRIPT → SUPABASE → BROWSER
+    </div>
+    <div class="ascii">
+      [SAMPLE: 30 MIN]   [ROWS: <span id="footRows">0</span>]   [REFRESH: 30 SEC]
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const SUPABASE_URL = 'https://yuubrzgdmgnajmeajkih.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1dWJyemdkbWduYWptZWFqa2loIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NDI2MjAsImV4cCI6MjA5MjQxODYyMH0.Jz0k39_YwLkLDpe62iUoF5FH2R_HHbGV8PMlPQVK-LE';
+const TABLE = 'sensor_readings';
+const LIMIT = 200;
+const REFRESH_MS = 30 * 1000;
+
+// ============================================================
+// CHART.JS GLOBAL THEME
+// ============================================================
+Chart.defaults.color = '#7a7770';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 10;
+Chart.defaults.borderColor = '#2a2a2e';
+
+// ============================================================
+// FETCH FROM SUPABASE
+// ============================================================
+async function fetchData() {
+  const url = `${SUPABASE_URL}/rest/v1/${TABLE}?select=*&order=created_at.desc&limit=${LIMIT}`;
+  const res = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY
+    }
+  });
+  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
+  // Returned newest-first — reverse to chronological for charts
+  return (await res.json()).reverse();
+}
+
+// ============================================================
+// FORMATTING HELPERS
+// ============================================================
+const fmt = (v, dp = 1) => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(dp);
+const fmtInt = v => (v == null || isNaN(v)) ? '—' : Math.round(v).toString();
+const ago = ts => {
+  const sec = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (sec < 60) return sec + 's ago';
+  if (sec < 3600) return Math.floor(sec/60) + 'm ago';
+  if (sec < 86400) return Math.floor(sec/3600) + 'h ago';
+  return Math.floor(sec/86400) + 'd ago';
+};
+
+function pmStatus(v) {
+  if (v == null) return { label: 'NO DATA', cls: '', pct: 0 };
+  if (v <= 12)   return { label: 'GOOD AIR',           cls: 's-good', pct: Math.min(v/12*12, 12) };
+  if (v <= 35)   return { label: 'MODERATE',           cls: 's-mod',  pct: 12 + (v-12)/(35-12)*18 };
+  if (v <= 55)   return { label: 'UNHEALTHY · SENSITIVE', cls: 's-poor', pct: 30 + (v-35)/(55-35)*20 };
+  if (v <= 150)  return { label: 'UNHEALTHY',          cls: 's-bad',  pct: 50 + (v-55)/(150-55)*30 };
+  return                    { label: 'HAZARDOUS',          cls: 's-bad',  pct: Math.min(80 + (v-150)/100*20, 100) };
+}
+
+// ============================================================
+// SPARKLINES (lightweight canvas drawing, no Chart.js overhead)
+// ============================================================
+function drawSpark(canvas, values, color) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  if (!values || values.length < 2) return;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const step = w / (values.length - 1);
+
+  // Filled gradient under line
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, color + '55');
+  grad.addColorStop(1, color + '00');
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  values.forEach((v, i) => {
+    const x = i * step;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    if (i === 0) ctx.lineTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.lineTo(w, h);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = i * step;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  // End dot
+  const lx = (values.length - 1) * step;
+  const ly = h - ((values[values.length-1] - min) / range) * (h - 4) - 2;
+  ctx.beginPath();
+  ctx.arc(lx, ly, 2.2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+// ============================================================
+// CHART.JS HELPERS
+// ============================================================
+const chartRefs = {};
+
+function gridOpts() {
+  return {
+    grid: { color: '#1d1d20', drawTicks: false },
+    border: { display: false },
+    ticks: { padding: 8 }
+  };
+}
+
+function makeChart(id, datasets, opts = {}) {
+  const canvas = document.getElementById(id);
+  if (chartRefs[id]) chartRefs[id].destroy();
+  chartRefs[id] = new Chart(canvas, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600, easing: 'easeOutCubic' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c0c0d',
+          borderColor: '#3a3a40',
+          borderWidth: 1,
+          titleColor: '#ece8de',
+          bodyColor: '#ece8de',
+          titleFont: { family: "'JetBrains Mono', monospace", size: 10 },
+          bodyFont:  { family: "'JetBrains Mono', monospace", size: 11 },
+          padding: 10,
+          displayColors: true,
+          boxPadding: 4
+        }
+      },
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'MMM d, HH:mm' },
+          ...gridOpts()
+        },
+        y: { ...gridOpts(), beginAtZero: opts.zero || false },
+        ...(opts.scales || {})
+      }
+    }
+  });
+}
+
+// Very small time adapter (so Chart.js can plot Date objects without date-fns)
+Chart.register({
+  id: 'simple-time',
+  beforeInit(chart) {
+    const xScale = chart.options.scales?.x;
+    if (xScale && xScale.type === 'time') xScale.type = 'linear';
+  }
+});
+// Custom tick formatting for time-as-linear
+function timeTicks(scale) {
+  const min = scale.min, max = scale.max;
+  return scale.ticks.map(t => {
+    const d = new Date(t.value);
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  });
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+let prevLatest = null;
+
+function render(rows) {
+  document.getElementById('footRows').textContent = rows.length;
+  if (!rows.length) {
+    setLive('dead', 'NO DATA');
+    return;
+  }
+  const latest = rows[rows.length - 1];
+  const prev = rows.length >= 2 ? rows[rows.length - 2] : null;
+
+  // --- Live status ---
+  const ageSec = (Date.now() - new Date(latest.created_at)) / 1000;
+  if (ageSec < 60 * 60)        setLive('live',  'LIVE');
+  else if (ageSec < 60 * 90)   setLive('stale', 'DELAYED');
+  else                         setLive('dead',  'STALE');
+
+  document.getElementById('lastSeen').textContent =
+    `— last sample: ${ago(latest.created_at)} —`;
+  document.getElementById('rangeMeta').textContent =
+    `— ${rows.length} SAMPLES · ${ago(rows[0].created_at)} → NOW —`;
+
+  // --- Current values ---
+  document.getElementById('vPmNum').textContent = fmt(latest.pm25, 1);
+  document.getElementById('vTemp').textContent  = fmt(latest.temp, 1);
+  document.getElementById('vHumi').textContent  = fmt(latest.humi, 1);
+  document.getElementById('vSnd').textContent   = fmtInt(latest.sound);
+  document.getElementById('vIr').textContent    = fmtInt(latest.ir_count);
+
+  // --- Deltas ---
+  const delta = (a, b, dp = 1) => {
+    if (a == null || b == null) return 'Δ —';
+    const d = a - b;
+    const sign = d > 0 ? '+' : '';
+    return `Δ ${sign}${d.toFixed(dp)}`;
+  };
+  document.getElementById('pmDelta').textContent = prev ? delta(latest.pm25, prev.pm25, 1) : 'Δ —';
+  document.getElementById('dTemp').textContent   = prev ? delta(latest.temp, prev.temp, 1) : 'Δ —';
+  document.getElementById('dHumi').textContent   = prev ? delta(latest.humi, prev.humi, 1) : 'Δ —';
+  document.getElementById('dSnd').textContent    = prev ? delta(latest.sound, prev.sound, 0) : 'Δ —';
+  document.getElementById('dIr').textContent     = prev ? delta(latest.ir_count, prev.ir_count, 0) : 'Δ —';
+
+  // --- PM2.5 status + AQI bar ---
+  const ps = pmStatus(latest.pm25);
+  const pmEl = document.getElementById('vPmNum');
+  pmEl.classList.remove('s-good','s-mod','s-poor','s-bad');
+  if (ps.cls) pmEl.classList.add(ps.cls);
+  document.getElementById('pmStatus').textContent = '— ' + ps.label + ' —';
+  document.getElementById('aqiCursor').style.left = ps.pct + '%';
+
+  // --- Sparklines ---
+  const last24 = rows.slice(-24);
+  drawSpark(document.getElementById('sparkTemp'), last24.map(r => +r.temp || 0),  '#ff6b35');
+  drawSpark(document.getElementById('sparkHumi'), last24.map(r => +r.humi || 0),  '#4dd0c8');
+  drawSpark(document.getElementById('sparkSnd'),  last24.map(r => +r.sound || 0), '#b6d435');
+  drawSpark(document.getElementById('sparkIr'),   last24.map(r => +r.ir_count || 0), '#f5c842');
+
+  // --- Charts ---
+  const points = (key) => rows.map(r => ({ x: new Date(r.created_at).getTime(), y: +r[key] }));
+
+  makeChart('chartPm', [{
+    label: 'PM2.5',
+    data: points('pm25'),
+    borderColor: '#ff6b35',
+    backgroundColor: 'rgba(255,107,53,0.12)',
+    borderWidth: 1.6,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    fill: true,
+    tension: 0.25
+  }]);
+
+  makeChart('chartClimate', [
+    { label: 'Temp °C', data: points('temp'), borderColor: '#ff6b35', backgroundColor: 'rgba(255,107,53,0.06)', borderWidth: 1.4, pointRadius: 0, pointHoverRadius: 4, tension: 0.25, yAxisID: 'y' },
+    { label: 'Humi %',  data: points('humi'), borderColor: '#4dd0c8', backgroundColor: 'rgba(77,208,200,0.06)', borderWidth: 1.4, pointRadius: 0, pointHoverRadius: 4, tension: 0.25, yAxisID: 'y1' }
+  ], {
+    scales: {
+      y:  { ...gridOpts(), position: 'left'  },
+      y1: { ...gridOpts(), position: 'right', grid: { drawOnChartArea: false } }
+    }
+  });
+
+  makeChart('chartSnd', [{
+    label: 'Sound',
+    data: points('sound'),
+    borderColor: '#b6d435',
+    backgroundColor: 'rgba(182,212,53,0.10)',
+    borderWidth: 1.4,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    fill: true,
+    tension: 0.2
+  }], { zero: true });
+
+  makeChart('chartIr', [{
+    label: 'Count',
+    data: points('ir_count'),
+    borderColor: '#f5c842',
+    backgroundColor: 'rgba(245,200,66,0.10)',
+    borderWidth: 1.4,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    fill: true,
+    stepped: 'before'
+  }], { zero: true });
+}
+
+function setLive(state, label) {
+  const pill = document.getElementById('livePill');
+  pill.classList.remove('stale', 'dead');
+  if (state === 'stale') pill.classList.add('stale');
+  if (state === 'dead')  pill.classList.add('dead');
+  document.getElementById('liveLabel').textContent = label;
+}
+
+function showError(msg) {
+  const b = document.getElementById('errBanner');
+  b.textContent = '⚠  ' + msg;
+  b.classList.add('on');
+}
+function clearError() {
+  document.getElementById('errBanner').classList.remove('on');
+}
+
+// ============================================================
+// CLOCK
+// ============================================================
+function tickClock() {
+  const now = new Date();
+  const t = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('clock').textContent = 'TIME ' + t;
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+async function refresh() {
+  try {
+    const rows = await fetchData();
+    clearError();
+    render(rows);
+  } catch (err) {
+    console.error(err);
+    showError('Cannot reach Supabase — ' + err.message);
+    setLive('dead', 'OFFLINE');
+  }
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+window.addEventListener('resize', () => {
+  // redraw sparklines on resize (Chart.js handles itself)
+  const last = chartRefs.chartPm?.data.datasets[0]?.data;
+  if (last) {
+    // trigger a render with last fetched data — easiest: refetch
+  }
+});
+</script>
+
+</body>
+</html>
